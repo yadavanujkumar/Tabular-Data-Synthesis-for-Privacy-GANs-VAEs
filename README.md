@@ -1,0 +1,1 @@
+# Tabular-Data-Synthesis-for-Privacy-GANs-VAEs

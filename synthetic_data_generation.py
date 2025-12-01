@@ -41,8 +41,9 @@ def generate_simulated_financial_data(n_samples: int = 1000, seed: int = 42) -> 
     customer_ages = np.random.randint(18, 81, size=n_samples)
 
     # Generate income with some correlation to age
-    # Assume income increases with age until around 50, then plateaus
-    base_income = 30000 + (customer_ages - 18) * 1500
+    # Income increases with age until around 50, then plateaus
+    age_factor = np.minimum(customer_ages, 50) - 18  # Cap at age 50
+    base_income = 30000 + age_factor * 1500
     income_noise = np.random.normal(0, 10000, size=n_samples)
     incomes = np.maximum(20000, base_income + income_noise).astype(int)
 
@@ -182,7 +183,8 @@ def compute_correlation_matrix(df: pd.DataFrame, numerical_columns: list) -> pd.
 def validate_synthetic_data(
     real_data: pd.DataFrame,
     synthetic_data: pd.DataFrame,
-    numerical_columns: list
+    numerical_columns: list,
+    categorical_columns: list = None
 ) -> dict:
     """
     Validate synthetic data by comparing correlation matrices.
@@ -195,6 +197,8 @@ def validate_synthetic_data(
         Generated synthetic dataset
     numerical_columns : list
         List of numerical column names to compare
+    categorical_columns : list, optional
+        List of categorical column names to compare distributions
 
     Returns
     -------
@@ -211,7 +215,13 @@ def validate_synthetic_data(
 
     # Compute the difference between correlation matrices
     corr_diff = np.abs(real_corr - synthetic_corr)
-    mean_corr_diff = corr_diff.values[np.triu_indices_from(corr_diff.values, k=1)].mean()
+
+    # Handle case with fewer than 2 numerical columns
+    upper_tri_indices = np.triu_indices_from(corr_diff.values, k=1)
+    if len(upper_tri_indices[0]) > 0:
+        mean_corr_diff = corr_diff.values[upper_tri_indices].mean()
+    else:
+        mean_corr_diff = 0.0  # No correlation pairs to compare
 
     print("\n--- Real Data Correlation Matrix ---")
     print(real_corr.round(4).to_string())
@@ -233,20 +243,20 @@ def validate_synthetic_data(
     print(synthetic_data[numerical_columns].describe().round(2).to_string())
 
     # Categorical distribution comparison
-    print("\n--- Categorical Distribution Comparison ---")
-    categorical_columns = ["account_type", "transaction_category"]
-    for col in categorical_columns:
-        if col in real_data.columns and col in synthetic_data.columns:
-            print(f"\n{col}:")
-            real_dist = real_data[col].value_counts(normalize=True).sort_index()
-            synthetic_dist = synthetic_data[col].value_counts(normalize=True).sort_index()
+    if categorical_columns:
+        print("\n--- Categorical Distribution Comparison ---")
+        for col in categorical_columns:
+            if col in real_data.columns and col in synthetic_data.columns:
+                print(f"\n{col}:")
+                real_dist = real_data[col].value_counts(normalize=True).sort_index()
+                synthetic_dist = synthetic_data[col].value_counts(normalize=True).sort_index()
 
-            comparison = pd.DataFrame({
-                "Real": real_dist,
-                "Synthetic": synthetic_dist
-            }).fillna(0)
-            comparison["Difference"] = np.abs(comparison["Real"] - comparison["Synthetic"])
-            print(comparison.round(4).to_string())
+                comparison = pd.DataFrame({
+                    "Real": real_dist,
+                    "Synthetic": synthetic_dist
+                }).fillna(0)
+                comparison["Difference"] = np.abs(comparison["Real"] - comparison["Synthetic"])
+                print(comparison.round(4).to_string())
 
     # Return validation results
     return {
@@ -317,7 +327,8 @@ def main():
     validation_results = validate_synthetic_data(
         real_data=real_data,
         synthetic_data=synthetic_data,
-        numerical_columns=NUMERICAL_COLUMNS
+        numerical_columns=NUMERICAL_COLUMNS,
+        categorical_columns=CATEGORICAL_COLUMNS
     )
 
     # Summary
